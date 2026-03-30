@@ -1,0 +1,45 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "flockmap"
+version = "0.1.0"
+description = "A platform to collect and visualize bird sightings on a map."
+readme = "README.md"
+requires-python = ">=3.13"
+keywords = ["birds", "mapping", "geospatial", "citizen-science"]
+dependencies = ["fastapi (>=0.135.2,<0.136.0)", "tortoise-orm[asyncpg] (>=0.25.0,<0.26.0)", "aerich (>=0.9.2,<0.10.0)", "uvicorn[standard] (>=0.42.0,<0.43.0)", "python-dotenv (>=1.2.2,<2.0.0)", "python-multipart (>=0.0.22,<0.0.23)"]
+
+[project.license]
+text = "MIT"
+
+[[project.authors]]
+name = "Fabian Blatz"
+email = "fabianblatz@gmail.com"
+
+[project.optional-dependencies]
+dev = []
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/flockmap"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.black]
+line-length = 100
+target-version = ["py313"]
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+
+[tool.aerich]
+tortoise_orm = "flockmap.config.TORTOISE_ORM"
+location = "./migrations"
+src_folder = "./."
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

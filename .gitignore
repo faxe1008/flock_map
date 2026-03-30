@@ -1,0 +1,95 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+
+# Poetry
+poetry.lock
+# (optional: keep this tracked if you want reproducible builds)
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+pytest_cache/
+nosetests.xml
+coverage.xml
+
+# Type checkers
+.mypy_cache/
+.pytype/
+.pyre/
+
+# Linters / formatters
+.ruff_cache/
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+
+# dotenv
+.env
+.env.*
+!.env.example
+
+# IDEs and editors
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Logs
+*.log
+
+# SQLite database files (if you use them locally)
+*.sqlite3
+*.db
+
+# Temporary files
+*.tmp
+*.swp
+*~
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Documentation builds
+docs/_build/
+
+# Caches
+.cache/
+
+# Optional: ignore local config overrides
+config.local.*
