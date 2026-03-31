@@ -28,6 +28,16 @@ def _row_to_read(s: Sighting, distance_m: float | None = None) -> SightingRead:
 
 
 def _dict_to_read(r: dict, distance_m: float | None = None, seconds_ago: float | None = None) -> SightingRead:
+    import json
+    
+    # Parse custom_attrs if it's a string (from raw SQL queries)
+    custom_attrs = r["custom_attrs"]
+    if isinstance(custom_attrs, str):
+        try:
+            custom_attrs = json.loads(custom_attrs)
+        except (json.JSONDecodeError, TypeError):
+            custom_attrs = None
+    
     return SightingRead(
         id=r["id"],
         species_id=r["species_id"],
@@ -37,7 +47,7 @@ def _dict_to_read(r: dict, distance_m: float | None = None, seconds_ago: float |
         longitude=r["location_lon"],
         count=r["count"],
         notes=r["notes"],
-        custom_attrs=r["custom_attrs"],
+        custom_attrs=custom_attrs,
         dedupe_key=r["dedupe_key"],
         user_id=r["user_id"],
         created_at=r["created_at"],

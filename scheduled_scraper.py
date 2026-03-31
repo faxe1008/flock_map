@@ -147,6 +147,30 @@ class ScheduledScrapingService:
         }
         return rarity_map.get(rarity.lower(), 3)  # Default to uncommon
     
+    def _generate_dedupe_key(self, sighting_data: SightingData, source: str) -> str:
+        """
+        Generate a unique deduplication key for a sighting.
+        
+        Uses SHA-256 hash of key sighting attributes to ensure uniqueness
+        and prevent duplicate entries.
+        """
+        import hashlib
+        
+        # Create a string from key identifying attributes
+        key_parts = [
+            source,
+            sighting_data.scientific_name,
+            f"{sighting_data.latitude:.6f}",  # 6 decimal places for ~0.1m precision
+            f"{sighting_data.longitude:.6f}",
+            sighting_data.observation_date.isoformat(),
+            str(sighting_data.count),
+            sighting_data.location_name or "",
+            sighting_data.observer or "",
+        ]
+        
+        key_string = "|".join(key_parts)
+        return hashlib.sha256(key_string.encode('utf-8')).hexdigest()
+    
     async def import_sighting(self, sighting_data: SightingData, source: str) -> Optional[Sighting]:
         """
         Import a single sighting into the database with deduplication.
@@ -173,14 +197,26 @@ class ScheduledScrapingService:
                 "imported_at": datetime.now().isoformat(),
             })
             
-            # Create sighting (deduplication handled by model)
+            # Generate dedupe_key for deduplication
+            dedupe_key = self._generate_dedupe_key(sighting_data, source)
+            
+            # Create sighting (deduplication handled by unique dedupe_key)
             sighting = await Sighting.create(
                 species=species,
-                latitude=sighting_data.latitude,
-                longitude=sighting_data.longitude,
+                location_lat=sighting_data.latitude,
+                location_lon=sighting_data.longitude,
                 count=sighting_data.count,
                 observed_at=sighting_data.observation_date,
-                custom_attributes=custom_attributes
+                custom_attrs=custom_attributes,
+                dedupe_key=dedupe_key
+            )
+            
+            # Update PostGIS geography column for spatial queries
+            from tortoise import connections
+            conn = connections.get("default")
+            await conn.execute_query(
+                "UPDATE sighting SET geog = ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography WHERE id = $3",
+                [sighting_data.longitude, sighting_data.latitude, sighting.id]
             )
             
             logger.debug(f"Imported: {sighting.count}x {species.common_name} at {sighting_data.location_name}")
@@ -348,16 +384,7 @@ class ScheduledScrapingService:
     
     def start_scheduler(self):
         """Start the scheduled scraping service."""
-        
-        # Schedule twice daily: 6 AM and 6 PM
-        self.scheduler.add_job(
-            self.run_scheduled_scrape,
-            CronTrigger(hour=6, minute=0),  # 6:00 AM
-            id='morning_scrape',
-            name='Morning Bird Data Scraping',
-            misfire_grace_time=300  # 5 minutes grace period
-        )
-        
+     
         self.scheduler.add_job(
             self.run_scheduled_scrape,
             CronTrigger(hour=18, minute=0),  # 6:00 PM 
@@ -367,7 +394,6 @@ class ScheduledScrapingService:
         )
         
         logger.info("📅 Scheduled scraping jobs configured:")
-        logger.info("  - Morning scrape: 06:00 daily")
         logger.info("  - Evening scrape: 18:00 daily")
         
         # Start the scheduler

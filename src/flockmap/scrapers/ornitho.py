@@ -363,6 +363,27 @@ class OrnithoScraper(BirdDataScraper):
         
         return params
     
+    def _clean_species_name(self, name: str) -> str:
+        """
+        Clean species name by removing pipe symbols and other formatting artifacts.
+        
+        Args:
+            name: Raw species name from ornitho.de
+            
+        Returns:
+            Cleaned species name with proper formatting
+        """
+        if not name:
+            return ""
+        
+        # Remove pipe symbols used as syllable separators in German compound words
+        cleaned_name = name.replace("|", "")
+        
+        # Remove any extra whitespace
+        cleaned_name = cleaned_name.strip()
+        
+        return cleaned_name
+    
     def _parse_sighting_data(self, raw_data: Dict[str, Any]) -> Optional[SightingData]:
         """Parse raw sighting data from ornitho.de into standardized format."""
         
@@ -372,7 +393,7 @@ class OrnithoScraper(BirdDataScraper):
         try:
             # Extract basic info
             species = raw_data["species_array"]
-            species_name = species["name"]
+            species_name = self._clean_species_name(species["name"])
             scientific_name = species["latin_name"]
             latitude = float(raw_data["lat"])
             longitude = float(raw_data["lon"])

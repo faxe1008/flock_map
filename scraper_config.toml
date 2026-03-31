@@ -6,8 +6,8 @@
 # Scraping Schedule Configuration
 [schedule]
 # Times for daily scraping runs (24-hour format)
-morning_hour = 6
-morning_minute = 0
+morning_hour = 11
+morning_minute = 30
 evening_hour = 18  
 evening_minute = 0
 
