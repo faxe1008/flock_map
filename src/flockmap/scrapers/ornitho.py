@@ -4,6 +4,7 @@ Ornitho.de scraper implementation.
 Scrapes bird sighting data from the German ornitho.de platform.
 """
 
+import random
 import re
 from datetime import datetime, timedelta
 from typing import List, Optional, Dict, Any
@@ -27,6 +28,20 @@ class OrnithoScraper(BirdDataScraper):
     - sp_cC: Regional filter (binary string representing cantons/regions)
     - mp_current_page: Pagination
     """
+    
+    # Realistic browser user agent strings for anti-blocking
+    USER_AGENTS = [
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Safari/605.1.15",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/120.0",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:109.0) Gecko/20100101 Firefox/120.0",
+        "Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/120.0",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Edge/119.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36 Edg/119.0.0.0"
+    ]
     
     # Ornitho.de rarity categories
     RARITY_CATEGORIES = [
@@ -117,12 +132,54 @@ class OrnithoScraper(BirdDataScraper):
         "CZ": "Czech Republic",
     }
     
-    def __init__(self, rate_limit_seconds: float = 2.0):
-        """Initialize OrnithoScraper with conservative rate limiting."""
+    def __init__(self, rate_limit_seconds: float = 2.0, random_delay: bool = True):
+        """
+        Initialize OrnithoScraper with conservative rate limiting and anti-blocking measures.
+        
+        Args:
+            rate_limit_seconds: Base delay between requests
+            random_delay: Add random jitter to delays for more natural patterns
+        """
         super().__init__(
             base_url="https://www.ornitho.de",
             rate_limit_seconds=rate_limit_seconds
         )
+        self.random_delay = random_delay
+        self.user_agents = [
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/120.0",
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:109.0) Gecko/20100101 Firefox/120.0",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Edge/119.0.0.0 Safari/537.36"
+        ]
+    
+    def _get_random_user_agent(self) -> str:
+        """Get a random browser user agent to avoid detection."""
+        return random.choice(self.user_agents)
+    
+    async def _rate_limit_delay(self) -> None:
+        """Apply rate limiting delay with optional random jitter."""
+        if self._last_request_time is not None:
+            import time
+            import asyncio
+            
+            time_since_last = time.time() - self._last_request_time
+            base_delay = self.rate_limit_seconds
+            
+            # Add random jitter (±20%) for more natural request patterns
+            if self.random_delay:
+                jitter = random.uniform(-0.2, 0.2) * base_delay
+                delay_needed = base_delay + jitter
+            else:
+                delay_needed = base_delay
+            
+            if time_since_last < delay_needed:
+                sleep_time = delay_needed - time_since_last
+                await asyncio.sleep(sleep_time)
+        
+        import time
+        self._last_request_time = time.time()
     
     def _build_regional_filter(self, region: Optional[str] = None) -> str:
         """
@@ -409,7 +466,24 @@ class OrnithoScraper(BirdDataScraper):
         page = 1
         
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
+            # Set up HTTP client with rotating user agent and realistic headers
+            headers = {
+                "User-Agent": self._get_random_user_agent(),
+                "Accept": "application/json, text/javascript, */*; q=0.01",
+                "Accept-Language": "de-DE,de;q=0.9,en;q=0.8",
+                "Accept-Encoding": "gzip, deflate, br",
+                "DNT": "1",
+                "Connection": "keep-alive",
+                "Sec-Fetch-Dest": "empty",
+                "Sec-Fetch-Mode": "cors",
+                "Sec-Fetch-Site": "same-origin",
+            }
+            
+            async with httpx.AsyncClient(
+                timeout=30.0,
+                headers=headers,
+                follow_redirects=True
+            ) as client:
                 
                 while True:
                     # Apply rate limiting

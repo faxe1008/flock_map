@@ -1,0 +1,80 @@
+# FlockMap Scheduled Scraping Configuration
+# 
+# This file configures the automated scraping of bird sighting data.
+# Edit this file to add new regions, adjust scraping parameters, or configure schedules.
+
+# Scraping Schedule Configuration
+[schedule]
+# Times for daily scraping runs (24-hour format)
+morning_hour = 6
+morning_minute = 0
+evening_hour = 18  
+evening_minute = 0
+
+# Grace period for missed jobs (seconds)
+misfire_grace_time = 300
+
+[logging]
+# Logging configuration
+log_level = "INFO"
+log_file = "scraper_scheduler.log"
+console_output = true
+
+# Ornitho.de Scraping Configuration
+[ornitho_de]
+enabled = true
+rate_limit_seconds = 3.0
+random_delay = true
+rarity_filters = ["common", "verycommon", "unusual", "rare", "veryrare"]
+
+# Default scraping parameters
+[ornitho_de.defaults]
+max_results = 100
+days_back = 2
+
+# Regional targets (easily expandable)
+[[ornitho_de.regions]]
+code = "OG"
+name = "Ortenaukreis (Offenburg)"
+max_results = 100
+days_back = 2
+
+[[ornitho_de.regions]]
+code = "MOS"  
+name = "Neckar-Odenwald-Kreis (Mosbach)"
+max_results = 100
+days_back = 2
+
+# Example: Add more regions by uncommenting and editing:
+#
+# [[ornitho_de.regions]]
+# code = "BW"
+# name = "Baden-Württemberg (entire state)"
+# max_results = 200
+# days_back = 1
+#
+# [[ornitho_de.regions]]
+# code = "BY"
+# name = "Bayern (entire state)" 
+# max_results = 150
+# days_back = 2
+#
+# [[ornitho_de.regions]]
+# code = "AT"
+# name = "Austria (neighboring country)"
+# max_results = 50
+# days_back = 3
+
+# Database Configuration
+[database]
+# Database connection will be loaded from environment/config
+# No sensitive data should be stored in this config file
+
+# Anti-blocking Configuration
+[anti_blocking]
+# These settings help avoid being blocked by websites
+user_agent_rotation = true
+random_request_delays = true
+min_delay_between_regions = 10.0  # seconds
+max_delay_between_regions = 30.0  # seconds
+initial_random_delay = [5.0, 15.0]  # min, max seconds
