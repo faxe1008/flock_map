@@ -61,6 +61,7 @@ class SightingRead(BaseModel):
     user_id: int | None
     created_at: datetime
     distance_m: float | None = None  # populated by nearby queries
+    seconds_ago: float | None = None  # populated by duration-filtered queries
 
     class Config:
         from_attributes = True
@@ -75,6 +76,7 @@ class NearbyQuery(BaseModel):
     longitude: float = Field(ge=-180, le=180)
     radius_m: float = Field(default=5000, gt=0, le=50000, description="Search radius in metres")
     limit: int = Field(default=50, ge=1, le=500)
+    duration_seconds: int | None = Field(default=None, gt=0, le=604800, description="Only sightings from the last X seconds (max 1 week)")
 
 
 class ViewportQuery(BaseModel):
@@ -83,3 +85,4 @@ class ViewportQuery(BaseModel):
     ne_lat: float = Field(ge=-90, le=90, description="Northeast corner latitude")
     ne_lon: float = Field(ge=-180, le=180, description="Northeast corner longitude")
     limit: int = Field(default=200, ge=1, le=2000)
+    duration_seconds: int | None = Field(default=None, gt=0, le=604800, description="Only sightings from the last X seconds (max 1 week)")

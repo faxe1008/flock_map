@@ -27,7 +27,7 @@ def _row_to_read(s: Sighting, distance_m: float | None = None) -> SightingRead:
     )
 
 
-def _dict_to_read(r: dict, distance_m: float | None = None) -> SightingRead:
+def _dict_to_read(r: dict, distance_m: float | None = None, seconds_ago: float | None = None) -> SightingRead:
     return SightingRead(
         id=r["id"],
         species_id=r["species_id"],
@@ -42,6 +42,7 @@ def _dict_to_read(r: dict, distance_m: float | None = None) -> SightingRead:
         user_id=r["user_id"],
         created_at=r["created_at"],
         distance_m=distance_m,
+        seconds_ago=seconds_ago,
     )
 
 
@@ -97,23 +98,48 @@ async def sightings_nearby(
     longitude: float = Query(ge=-180, le=180),
     radius_m: float = Query(default=5000, gt=0, le=50000),
     limit: int = Query(default=50, ge=1, le=500),
+    duration_seconds: int | None = Query(default=None, gt=0, le=604800, description="Only sightings from the last X seconds (max 1 week)"),
 ):
-    """Return sightings within *radius_m* metres of the given point,
-    ordered by distance (nearest first).
+    """Return sightings within *radius_m* metres of the given point.
+    If duration_seconds is specified, only return sightings from the last X seconds.
+    Results are ordered by duration (most recent first) if duration filter is used,
+    otherwise ordered by distance (nearest first).
     """
     conn = connections.get("default")
-    rows = await conn.execute_query_dict(
+    
+    # Build the SQL query based on whether duration filtering is requested
+    if duration_seconds:
+        # With duration filtering: calculate seconds_ago and filter by time
+        sql = """
+        SELECT s.*,
+               ST_Distance(s.geog, ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography) AS distance_m,
+               EXTRACT(EPOCH FROM (NOW() - s.observed_at)) AS seconds_ago
+          FROM sighting s
+         WHERE ST_DWithin(s.geog, ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography, $3)
+           AND s.observed_at >= NOW() - make_interval(secs => $4)
+         ORDER BY s.observed_at DESC
+         LIMIT $5
         """
+        rows = await conn.execute_query_dict(
+            sql,
+            [longitude, latitude, radius_m, duration_seconds, limit],
+        )
+        return [_dict_to_read(r, distance_m=r["distance_m"], seconds_ago=r["seconds_ago"]) for r in rows]
+    else:
+        # Without duration filtering: original behavior (ordered by distance)
+        sql = """
         SELECT s.*,
                ST_Distance(s.geog, ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography) AS distance_m
           FROM sighting s
          WHERE ST_DWithin(s.geog, ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography, $3)
          ORDER BY distance_m
          LIMIT $4
-        """,
-        [longitude, latitude, radius_m, limit],
-    )
-    return [_dict_to_read(r, distance_m=r["distance_m"]) for r in rows]
+        """
+        rows = await conn.execute_query_dict(
+            sql,
+            [longitude, latitude, radius_m, limit],
+        )
+        return [_dict_to_read(r, distance_m=r["distance_m"]) for r in rows]
 
 
 # ---- Viewport (bounding-box) query ----------------------------------------
@@ -125,11 +151,37 @@ async def sightings_viewport(
     ne_lat: float = Query(ge=-90, le=90),
     ne_lon: float = Query(ge=-180, le=180),
     limit: int = Query(default=200, ge=1, le=2000),
+    duration_seconds: int | None = Query(default=None, gt=0, le=604800, description="Only sightings from the last X seconds (max 1 week)"),
 ):
-    """Return sightings within the given map viewport (bounding box)."""
+    """Return sightings within the given map viewport (bounding box).
+    If duration_seconds is specified, only return sightings from the last X seconds.
+    Results are always ordered by observation time (most recent first).
+    """
     conn = connections.get("default")
-    rows = await conn.execute_query_dict(
+    
+    # Build the SQL query based on whether duration filtering is requested
+    if duration_seconds:
+        # With duration filtering: calculate seconds_ago and filter by time
+        sql = """
+        SELECT s.*,
+               EXTRACT(EPOCH FROM (NOW() - s.observed_at)) AS seconds_ago
+          FROM sighting s
+         WHERE ST_Covers(
+                 ST_MakeEnvelope($1, $2, $3, $4, 4326)::geography,
+                 s.geog
+               )
+           AND s.observed_at >= NOW() - make_interval(secs => $5)
+         ORDER BY s.observed_at DESC
+         LIMIT $6
         """
+        rows = await conn.execute_query_dict(
+            sql,
+            [sw_lon, sw_lat, ne_lon, ne_lat, duration_seconds, limit],
+        )
+        return [_dict_to_read(r, seconds_ago=r["seconds_ago"]) for r in rows]
+    else:
+        # Without duration filtering: original behavior
+        sql = """
         SELECT s.*
           FROM sighting s
          WHERE ST_Covers(
@@ -138,10 +190,12 @@ async def sightings_viewport(
                )
          ORDER BY s.observed_at DESC
          LIMIT $5
-        """,
-        [sw_lon, sw_lat, ne_lon, ne_lat, limit],
-    )
-    return [_dict_to_read(r) for r in rows]
+        """
+        rows = await conn.execute_query_dict(
+            sql,
+            [sw_lon, sw_lat, ne_lon, ne_lat, limit],
+        )
+        return [_dict_to_read(r) for r in rows]
 
 
 # ---- Single sighting (parameterised — must be LAST) -----------------------
