@@ -1,0 +1,23 @@
+FROM python:3.13-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONPATH=/app/src
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY pyproject.toml /app/
+COPY src /app/src
+COPY migrations /app/migrations
+COPY scripts /app/scripts
+COPY scheduled_scraper.py /app/scheduled_scraper.py
+
+RUN pip install --upgrade pip && pip install .
+
+EXPOSE 8000
+
+CMD ["sh", "-c", "python scripts/wait_for_db.py && (python -m aerich init-db || true) && python -m aerich upgrade && python scripts/apply_postgis_setup.py && uvicorn flockmap.app:app --host 0.0.0.0 --port 8000"]
