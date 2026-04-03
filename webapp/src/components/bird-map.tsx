@@ -491,8 +491,6 @@ export function BirdMap() {
       <div className="mx-auto flex min-h-screen w-full max-w-md flex-col px-3 py-4 sm:max-w-2xl sm:px-5">
         <header className="rise-in rounded-2xl border border-border/60 bg-surface/90 px-4 py-3 shadow-[0_10px_30px_rgba(25,45,35,0.08)] backdrop-blur-sm">
           <p className="text-xs font-mono uppercase tracking-[0.2em] text-ink-muted">FlockMap</p>
-          <h1 className="mt-1 text-2xl font-semibold leading-tight">Nearby Bird Sightings</h1>
-          <p className="mt-1 text-sm text-ink-muted">Mobile-first live map powered by your current location.</p>
         </header>
 
         <section className="rise-in relative mt-3 overflow-hidden rounded-2xl border border-border bg-surface shadow-[0_18px_40px_rgba(25,45,35,0.14)]">
