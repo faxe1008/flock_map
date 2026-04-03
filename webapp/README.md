@@ -53,3 +53,18 @@ By default, `FLOCKMAP_API_BASE_URL` is `http://localhost:8000`.
 - Species dropdown sourced from database species only
 - Viewport-driven sightings loading (based on current map rectangle)
 - Time-range filter
+
+## Docker
+
+From repository root:
+
+```bash
+docker compose up --build
+```
+
+Services:
+
+- PostGIS: `localhost:5432`
+- API server: `localhost:8000`
+- Web app: `localhost:3000`
+- Scheduled scraper: runs continuously in its own container
