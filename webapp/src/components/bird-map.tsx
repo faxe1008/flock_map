@@ -16,6 +16,7 @@ type SpeciesRead = {
   id: number;
   common_name: string;
   scientific_name: string;
+  has_image?: boolean;
 };
 
 type LocationState = {
@@ -81,8 +82,13 @@ function formatObservedAt(value: string): string {
   }).format(date);
 }
 
-function popupContent(feature: MapGeoJSONFeature): HTMLDivElement {
+function popupContent(
+  feature: MapGeoJSONFeature,
+  speciesId: number,
+  hasImage: boolean,
+): HTMLDivElement {
   const root = document.createElement("div");
+  root.style.maxWidth = "220px";
 
   const title = document.createElement("p");
   title.className = "font-semibold text-sm";
@@ -92,6 +98,23 @@ function popupContent(feature: MapGeoJSONFeature): HTMLDivElement {
   latin.className = "font-mono text-xs text-ink-muted";
   latin.textContent = String(feature.properties?.scientificName ?? "");
 
+  root.append(title, latin);
+
+  if (hasImage) {
+    const img = document.createElement("img");
+    img.src = `/api/species/${speciesId}/image`;
+    img.alt = String(feature.properties?.commonName ?? "Bird");
+    img.style.width = "100%";
+    img.style.maxHeight = "160px";
+    img.style.objectFit = "cover";
+    img.style.borderRadius = "0.5rem";
+    img.style.marginTop = "0.5rem";
+    img.onerror = () => {
+      img.remove();
+    };
+    root.appendChild(img);
+  }
+
   const count = document.createElement("p");
   count.className = "mt-2 text-sm";
   count.textContent = `Count: ${String(feature.properties?.count ?? "n/a")}`;
@@ -100,7 +123,26 @@ function popupContent(feature: MapGeoJSONFeature): HTMLDivElement {
   observed.className = "text-xs text-ink-muted";
   observed.textContent = `Observed: ${String(feature.properties?.observedAt ?? "n/a")}`;
 
-  root.append(title, latin, count, observed);
+  root.append(count, observed);
+
+  const lat = feature.geometry?.type === "Point" ? feature.geometry.coordinates[1] : null;
+  const lng = feature.geometry?.type === "Point" ? feature.geometry.coordinates[0] : null;
+
+  if (lat !== null && lng !== null) {
+    const mapsLink = document.createElement("a");
+    mapsLink.href = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
+    mapsLink.target = "_blank";
+    mapsLink.rel = "noopener noreferrer";
+    mapsLink.className = "mt-2 block text-xs text-accent hover:underline";
+    mapsLink.textContent = "Navigate here";
+
+    const arrow = document.createElement("span");
+    arrow.textContent = " →";
+    mapsLink.appendChild(arrow);
+
+    root.appendChild(mapsLink);
+  }
+
   return root;
 }
 
@@ -287,6 +329,8 @@ export function BirdMap() {
         }
 
         const [lng, lat] = feature.geometry.coordinates;
+        const speciesId = Number(feature.properties?.speciesId ?? 0);
+        const hasImage = Boolean(feature.properties?.hasImage);
 
         if (popupRef.current) {
           popupRef.current.remove();
@@ -294,7 +338,7 @@ export function BirdMap() {
 
         popupRef.current = new maplibregl.Popup({ closeButton: true, closeOnMove: true })
           .setLngLat([lng, lat])
-          .setDOMContent(popupContent(feature))
+          .setDOMContent(popupContent(feature, speciesId, hasImage))
           .addTo(map);
       });
 
@@ -429,6 +473,8 @@ export function BirdMap() {
           },
           properties: {
             id: sighting.id,
+            speciesId: sighting.species_id,
+            hasImage: species?.has_image ?? false,
             commonName: species?.common_name ?? `Species #${sighting.species_id}`,
             scientificName: species?.scientific_name ?? "",
             count: sighting.count,
