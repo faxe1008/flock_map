@@ -156,7 +156,7 @@ export function BirdMap() {
   const [locationStatus, setLocationStatus] = useState<"idle" | "loading" | "ready" | "denied" | "error">("idle");
   const [locationError, setLocationError] = useState<string | null>(null);
 
-  const [durationHours, setDurationHours] = useState("24");
+  const [durationDays, setDurationDays] = useState("7");
   const [selectedSpeciesId, setSelectedSpeciesId] = useState("all");
   const [viewportBounds, setViewportBounds] = useState<ViewportBounds | null>(null);
 
@@ -381,7 +381,7 @@ export function BirdMap() {
 
     const loadSightings = async () => {
       const lastFetchWindow = lastFetchWindowRef.current;
-      const durationMatches = lastFetchWindow?.durationKey === durationHours;
+      const durationMatches = lastFetchWindow?.durationKey === durationDays;
       const viewportCovered = lastFetchWindow
         ? isViewportCoveredByBounds(viewportBounds, lastFetchWindow.bounds)
         : false;
@@ -403,8 +403,8 @@ export function BirdMap() {
         limit: "500",
       });
 
-      if (durationHours !== "all") {
-        params.set("duration_seconds", String(Number(durationHours) * 3600));
+      if (durationDays !== "all") {
+        params.set("duration_seconds", String(Number(durationDays) * 86400));
       }
 
       const response = await fetch(`/api/sightings/viewport?${params.toString()}`, {
@@ -420,7 +420,7 @@ export function BirdMap() {
       setSightings(payload);
       lastFetchWindowRef.current = {
         bounds: requestBounds,
-        durationKey: durationHours,
+        durationKey: durationDays,
       };
     };
 
@@ -438,7 +438,7 @@ export function BirdMap() {
     return () => {
       controller.abort();
     };
-  }, [viewportBounds, durationHours]);
+  }, [viewportBounds, durationDays]);
 
   const speciesById = useMemo(() => {
     return new Map(speciesCatalog.map((species) => [species.id, species]));
@@ -590,16 +590,17 @@ export function BirdMap() {
             </label>
             <select
               id="timeframe"
-              value={durationHours}
+              value={durationDays}
               onChange={(event) => {
-                setDurationHours(event.target.value);
+                setDurationDays(event.target.value);
               }}
               className="mt-2 w-full rounded-xl border border-border bg-white px-3 py-2.5 text-base text-ink outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/20"
             >
-              <option value="6">Last 6 hours</option>
-              <option value="24">Last 24 hours</option>
-              <option value="72">Last 3 days</option>
-              <option value="168">Last 7 days</option>
+              <option value="1">Today</option>
+              <option value="3">Last 3 days</option>
+              <option value="7">Last 7 days</option>
+              <option value="14">Last 14 days</option>
+              <option value="30">Last 30 days</option>
               <option value="all">All available</option>
             </select>
           </div>
