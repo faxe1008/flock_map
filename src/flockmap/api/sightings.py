@@ -108,7 +108,7 @@ async def sightings_nearby(
     longitude: float = Query(ge=-180, le=180),
     radius_m: float = Query(default=5000, gt=0, le=50000),
     limit: int = Query(default=50, ge=1, le=500),
-    duration_seconds: int | None = Query(default=None, gt=0, le=604800, description="Only sightings from the last X seconds (max 1 week)"),
+    duration_seconds: int | None = Query(default=None, gt=0, le=7776000, description="Only sightings from the last X seconds (max 90 days)"),
 ):
     """Return sightings within *radius_m* metres of the given point.
     If duration_seconds is specified, only return sightings from the last X seconds.
@@ -161,7 +161,7 @@ async def sightings_viewport(
     ne_lat: float = Query(ge=-90, le=90),
     ne_lon: float = Query(ge=-180, le=180),
     limit: int = Query(default=200, ge=1, le=2000),
-    duration_seconds: int | None = Query(default=None, gt=0, le=604800, description="Only sightings from the last X seconds (max 1 week)"),
+    duration_seconds: int | None = Query(default=None, gt=0, le=7776000, description="Only sightings from the last X seconds (max 90 days)"),
 ):
     """Return sightings within the given map viewport (bounding box).
     If duration_seconds is specified, only return sightings from the last X seconds.
