@@ -546,13 +546,13 @@ export function BirdMap() {
 
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top,_#eaf2ee_0%,_#f6f3ea_45%,_#f6f3ea_100%)] text-ink">
-      <div className="mx-auto flex min-h-screen w-full max-w-md flex-col px-3 py-4 sm:max-w-2xl sm:px-5">
-        <header className="rise-in rounded-2xl border border-border/60 bg-surface/90 px-4 py-3 shadow-[0_10px_30px_rgba(25,45,35,0.08)] backdrop-blur-sm">
+      <div className="mx-auto flex min-h-screen w-full max-w-md flex-col px-3 py-4 sm:max-w-2xl sm:px-5 lg:max-w-none lg:px-6">
+        <header className="rise-in rounded-2xl border border-border/60 bg-surface/90 px-4 py-3 shadow-[0_10px_30px_rgba(25,45,35,0.08)] backdrop-blur-sm lg:mx-auto lg:w-full lg:max-w-2xl">
           <p className="text-xs font-mono uppercase tracking-[0.2em] text-ink-muted">FlockMap</p>
         </header>
 
         <section className="rise-in relative mt-3 overflow-hidden rounded-2xl border border-border bg-surface shadow-[0_18px_40px_rgba(25,45,35,0.14)]">
-          <div ref={containerRef} className="h-[52dvh] min-h-[360px] w-full sm:h-[64dvh]" />
+          <div ref={containerRef} className="h-[52dvh] min-h-[360px] w-full sm:h-[64dvh] lg:h-[70dvh]" />
 
           <div className="pointer-events-none absolute left-3 top-3 flex flex-col gap-2">
             <span className="inline-flex rounded-full border border-border/80 bg-surface/95 px-3 py-1 text-xs text-ink-muted shadow-sm">
@@ -574,7 +574,7 @@ export function BirdMap() {
           </button>
         </section>
 
-        <section className="rise-in mt-3 rounded-2xl border border-border/80 bg-surface/95 p-4 shadow-[0_12px_30px_rgba(25,45,35,0.1)]">
+        <section className="rise-in mt-3 rounded-2xl border border-border/80 bg-surface/95 p-4 shadow-[0_12px_30px_rgba(25,45,35,0.1)] lg:mx-auto lg:w-full lg:max-w-2xl">
           <label htmlFor="species" className="text-sm font-medium text-ink">
             Species
           </label>

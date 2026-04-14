@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+import logging
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -6,6 +7,15 @@ from tortoise import Tortoise
 
 from flockmap.config import TORTOISE_ORM
 from flockmap.api import species, sightings
+
+
+class _HealthcheckFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        message = record.getMessage()
+        return '"GET /health ' not in message
+
+
+logging.getLogger("uvicorn.access").addFilter(_HealthcheckFilter())
 
 
 @asynccontextmanager

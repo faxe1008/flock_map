@@ -59,12 +59,30 @@ By default, `FLOCKMAP_API_BASE_URL` is `http://localhost:8000`.
 From repository root:
 
 ```bash
-docker compose up --build
+docker compose up -d
 ```
 
 Services:
 
 - PostGIS: `localhost:5432`
-- API server: `localhost:8000`
-- Web app: `localhost:3000`
+- Web app + API proxy: `localhost:3000`
 - Scheduled scraper: runs continuously in its own container
+
+The backend is reachable through the same web port via `/api/*`.
+
+Examples:
+
+- `http://localhost:3000/api/species`
+- `http://localhost:3000/api/sightings/viewport?...`
+
+By default, the compose stack pulls images from GHCR:
+
+- `ghcr.io/faxe1008/flockmap-server:latest`
+- `ghcr.io/faxe1008/flockmap-scraper:latest`
+- `ghcr.io/faxe1008/flockmap-webapp:latest`
+
+To test local image builds instead, use the local override:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.local.yml up --build
+```
