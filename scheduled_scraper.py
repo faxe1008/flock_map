@@ -6,6 +6,7 @@ and import them into the database on a regular schedule.
 """
 
 import asyncio
+import io
 import logging
 import random
 from datetime import datetime, timedelta
@@ -16,6 +17,8 @@ import os
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
+import httpx
+from PIL import Image
 from tortoise import Tortoise
 
 # Add src to path for imports
@@ -35,6 +38,9 @@ logging.basicConfig(
     handlers=[logging.FileHandler("scraper_scheduler.log"), logging.StreamHandler()],
 )
 logger = logging.getLogger(__name__)
+
+WIKIPEDIA_API_URL = "https://en.wikipedia.org/w/api.php"
+IMAGE_TARGET_SIZE = 512
 
 
 class ScheduledScrapingService:
@@ -363,6 +369,286 @@ class ScheduledScrapingService:
         except Exception as e:
             logger.error(f"❌ Scheduled scraping run failed: {e}")
 
+    @staticmethod
+    def _title_from_name(name: str) -> str:
+        return name.strip().replace(" ", "_")
+
+    @staticmethod
+    def _canvas_webp(image_bytes: bytes) -> bytes:
+        with Image.open(io.BytesIO(image_bytes)) as source:
+            source = source.convert("RGBA")
+            source.thumbnail((IMAGE_TARGET_SIZE, IMAGE_TARGET_SIZE), Image.Resampling.LANCZOS)
+
+            canvas = Image.new("RGBA", (IMAGE_TARGET_SIZE, IMAGE_TARGET_SIZE), (0, 0, 0, 0))
+            x = (IMAGE_TARGET_SIZE - source.width) // 2
+            y = (IMAGE_TARGET_SIZE - source.height) // 2
+            canvas.paste(source, (x, y), source)
+
+            output = io.BytesIO()
+            canvas.save(output, format="WEBP", quality=90, method=6)
+            return output.getvalue()
+
+    async def _polite_get(
+        self,
+        client: httpx.AsyncClient,
+        url: str,
+        request_pause_seconds: float,
+        max_retries: int,
+        **kwargs: Any,
+    ) -> httpx.Response:
+        last_response: httpx.Response | None = None
+        for attempt in range(1, max_retries + 1):
+            await asyncio.sleep(request_pause_seconds)
+            response = await client.get(url, **kwargs)
+            last_response = response
+            if response.status_code != 429:
+                return response
+
+            retry_after = response.headers.get("retry-after")
+            if retry_after and retry_after.isdigit():
+                pause_seconds = float(retry_after)
+            else:
+                pause_seconds = request_pause_seconds * (attempt * 4)
+
+            logger.warning(
+                "Image backfill got 429. Sleeping %.1fs before retry %d/%d.",
+                pause_seconds,
+                attempt,
+                max_retries,
+            )
+            await asyncio.sleep(pause_seconds)
+
+        if last_response is None:
+            raise RuntimeError("No HTTP response received")
+        last_response.raise_for_status()
+        return last_response
+
+    async def _wikipedia_page_image_url(
+        self,
+        client: httpx.AsyncClient,
+        title: str,
+        request_pause_seconds: float,
+        max_retries: int,
+    ) -> str | None:
+        params: Dict[str, Any] = {
+            "action": "query",
+            "format": "json",
+            "prop": "pageimages",
+            "piprop": "original",
+            "redirects": 1,
+            "titles": title,
+        }
+        response = await self._polite_get(
+            client,
+            WIKIPEDIA_API_URL,
+            request_pause_seconds=request_pause_seconds,
+            max_retries=max_retries,
+            params=params,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        pages = payload.get("query", {}).get("pages", {})
+        for page in pages.values():
+            original = page.get("original")
+            if original and original.get("source"):
+                return str(original["source"])
+        return None
+
+    async def _wikipedia_search_title(
+        self,
+        client: httpx.AsyncClient,
+        query: str,
+        request_pause_seconds: float,
+        max_retries: int,
+    ) -> str | None:
+        params: Dict[str, Any] = {
+            "action": "query",
+            "format": "json",
+            "list": "search",
+            "srlimit": 5,
+            "srsearch": f"{query} bird",
+        }
+        response = await self._polite_get(
+            client,
+            WIKIPEDIA_API_URL,
+            request_pause_seconds=request_pause_seconds,
+            max_retries=max_retries,
+            params=params,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        results = payload.get("query", {}).get("search", [])
+        if not results:
+            return None
+        return str(results[0]["title"])
+
+    async def _resolve_image_url(
+        self,
+        client: httpx.AsyncClient,
+        common_name: str,
+        scientific_name: str,
+        request_pause_seconds: float,
+        max_retries: int,
+    ) -> str | None:
+        candidate_titles = [scientific_name, common_name]
+        for candidate in candidate_titles:
+            if not candidate.strip():
+                continue
+            image_url = await self._wikipedia_page_image_url(
+                client,
+                self._title_from_name(candidate),
+                request_pause_seconds=request_pause_seconds,
+                max_retries=max_retries,
+            )
+            if image_url:
+                return image_url
+
+        search_queries = [scientific_name, common_name]
+        for query in search_queries:
+            if not query.strip():
+                continue
+            page_title = await self._wikipedia_search_title(
+                client,
+                query,
+                request_pause_seconds=request_pause_seconds,
+                max_retries=max_retries,
+            )
+            if not page_title:
+                continue
+            image_url = await self._wikipedia_page_image_url(
+                client,
+                page_title,
+                request_pause_seconds=request_pause_seconds,
+                max_retries=max_retries,
+            )
+            if image_url:
+                return image_url
+        return None
+
+    async def _download_image(
+        self,
+        client: httpx.AsyncClient,
+        url: str,
+        request_pause_seconds: float,
+        max_retries: int,
+    ) -> bytes | None:
+        response = await self._polite_get(
+            client,
+            url,
+            request_pause_seconds=request_pause_seconds,
+            max_retries=max_retries,
+        )
+        response.raise_for_status()
+        content_type = response.headers.get("content-type", "")
+        if not content_type.startswith("image/"):
+            return None
+        return response.content
+
+    async def run_scheduled_image_backfill(self):
+        """Fetch and store missing species images once per night."""
+        run_start = datetime.now()
+        logger.info("🌙 Starting nightly species image backfill at %s", run_start)
+
+        try:
+            await self.initialize_database()
+
+            missing_species = await Species.filter(image_data__isnull=True).order_by("id")
+            if not missing_species:
+                logger.info("No species without images found; skipping nightly image backfill")
+                return
+
+            request_pause_seconds = 6.0
+            species_pause_seconds = 60.0
+            max_retries = 8
+
+            timeout = httpx.Timeout(30.0, connect=10.0)
+            headers = {"User-Agent": "flockmap-nightly-image-backfill/1.0 (local script)"}
+
+            updated = 0
+            skipped = 0
+            failed = 0
+
+            async with httpx.AsyncClient(
+                timeout=timeout,
+                headers=headers,
+                follow_redirects=True,
+            ) as client:
+                total = len(missing_species)
+                for index, species in enumerate(missing_species, start=1):
+                    try:
+                        image_url = await self._resolve_image_url(
+                            client,
+                            common_name=species.common_name,
+                            scientific_name=species.scientific_name,
+                            request_pause_seconds=request_pause_seconds,
+                            max_retries=max_retries,
+                        )
+                        if not image_url:
+                            skipped += 1
+                            logger.info(
+                                "[%d/%d] No image found for %s (%s)",
+                                index,
+                                total,
+                                species.common_name,
+                                species.scientific_name,
+                            )
+                            continue
+
+                        raw_image = await self._download_image(
+                            client,
+                            image_url,
+                            request_pause_seconds=request_pause_seconds,
+                            max_retries=max_retries,
+                        )
+                        if not raw_image:
+                            skipped += 1
+                            logger.info(
+                                "[%d/%d] Non-image URL for %s (%s): %s",
+                                index,
+                                total,
+                                species.common_name,
+                                species.scientific_name,
+                                image_url,
+                            )
+                            continue
+
+                        webp_image = self._canvas_webp(raw_image)
+                        species.image_data = webp_image
+                        species.image_mime = "image/webp"
+                        await species.save(update_fields=["image_data", "image_mime"])
+                        updated += 1
+                        logger.info(
+                            "[%d/%d] Stored image for %s (%s)",
+                            index,
+                            total,
+                            species.common_name,
+                            species.scientific_name,
+                        )
+                    except Exception as e:
+                        failed += 1
+                        logger.error(
+                            "[%d/%d] Failed image backfill for %s (%s): %s",
+                            index,
+                            total,
+                            species.common_name,
+                            species.scientific_name,
+                            e,
+                        )
+                    finally:
+                        if index < total:
+                            await asyncio.sleep(species_pause_seconds)
+
+            run_duration = datetime.now() - run_start
+            logger.info(
+                "✅ Nightly image backfill completed in %s (updated=%d, skipped=%d, failed=%d)",
+                run_duration,
+                updated,
+                skipped,
+                failed,
+            )
+        except Exception as e:
+            logger.error(f"❌ Nightly image backfill failed: {e}")
+
     def add_region(self, source: str, region_code: str, region_name: str, **kwargs):
         """
         Add a new region to scraping configuration.
@@ -398,8 +684,17 @@ class ScheduledScrapingService:
             misfire_grace_time=300,
         )
 
+        self.scheduler.add_job(
+            self.run_scheduled_image_backfill,
+            CronTrigger(hour=2, minute=0),  # 2:00 AM
+            id="nightly_species_image_backfill",
+            name="Nightly Species Image Backfill",
+            misfire_grace_time=1800,
+        )
+
         logger.info("📅 Scheduled scraping job configured:")
         logger.info("  - Daily evening scrape: 18:00")
+        logger.info("  - Daily nightly image backfill: 02:00 (60s per species)")
 
         # Start the scheduler
         self.scheduler.start()
@@ -415,6 +710,11 @@ class ScheduledScrapingService:
         """Run a test scraping session immediately."""
         logger.info("🧪 Running test scraping session...")
         await self.run_scheduled_scrape()
+
+    async def run_test_image_backfill(self):
+        """Run image backfill once immediately."""
+        logger.info("🧪 Running test image backfill session...")
+        await self.run_scheduled_image_backfill()
 
     async def cleanup(self):
         """Clean up resources."""
@@ -432,6 +732,10 @@ async def main():
         # For development/testing - run immediate scrape
         if len(sys.argv) > 1 and sys.argv[1] == "--test":
             await service.run_test_scrape()
+            return
+
+        if len(sys.argv) > 1 and sys.argv[1] == "--test-images":
+            await service.run_test_image_backfill()
             return
 
         # Start the scheduler for production use
